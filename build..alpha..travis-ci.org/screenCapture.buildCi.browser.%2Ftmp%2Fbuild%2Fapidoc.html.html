@@ -1,0 +1,368 @@
+<html><head></head><body><div class="apidocDiv">
+<style>
+/*csslint
+*/
+.apidocDiv {
+    background: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+}
+.apidocDiv a[href] {
+    color: #33f;
+    font-weight: bold;
+    text-decoration: none;
+}
+.apidocDiv a[href]:hover {
+    text-decoration: underline;
+}
+.apidocCodeCommentSpan {
+    background: #bbf;
+    color: #000;
+    display: block;
+}
+.apidocCodeKeywordSpan {
+    color: #d00;
+    font-weight: bold;
+}
+.apidocCodePre {
+    background: #eef;
+    border: 1px solid;
+    color: #777;
+    padding: 5px;
+    white-space: pre-wrap;
+}
+.apidocFooterDiv {
+    margin-top: 20px;
+    text-align: center;
+}
+.apidocModuleLi {
+    margin-top: 10px;
+}
+.apidocSectionDiv {
+    border-top: 1px solid;
+    margin-top: 20px;
+}
+.apidocSignatureSpan {
+    color: #777;
+    font-weight: bold;
+}
+</style>
+<h1>api documentation for
+    <a href="https://github.com/vojtajina/node-di#readme">di (v0.0.1)</a>
+</h1>
+<h4>Dependency Injection for Node.js. Heavily inspired by AngularJS.</h4>
+<div class="apidocSectionDiv"><a href="#apidoc.tableOfContents" id="apidoc.tableOfContents"><h1>table of contents</h1></a><ol>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.di">module di</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.di.Injector">
+            function <span class="apidocSignatureSpan">di.</span>Injector
+            <span class="apidocSignatureSpan">(modules, parent)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.di.Module">
+            function <span class="apidocSignatureSpan">di.</span>Module
+            <span class="apidocSignatureSpan">()</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.di.annotate">
+            function <span class="apidocSignatureSpan">di.</span>annotate
+            <span class="apidocSignatureSpan">()</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <span class="apidocSignatureSpan">object <span class="apidocSignatureSpan">di.</span>annotation</span>
+
+        </li>
+
+    </ol></li>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.di.annotation">module di.annotation</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.di.annotation.annotate">
+            function <span class="apidocSignatureSpan">di.annotation.</span>annotate
+            <span class="apidocSignatureSpan">()</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.di.annotation.parse">
+            function <span class="apidocSignatureSpan">di.annotation.</span>parse
+            <span class="apidocSignatureSpan">(fn)</span>
+            </a>
+
+        </li>
+
+    </ol></li>
+
+</ol></div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.di" id="apidoc.module.di">module di</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.di.Injector" id="apidoc.element.di.Injector">
+        function <span class="apidocSignatureSpan">di.</span>Injector
+        <span class="apidocSignatureSpan">(modules, parent)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">Injector = function (modules, parent) {
+  parent = parent || {
+    get: function(name) {
+      currentlyResolving.push(name);
+      throw error('No provider for "' + name + '"!');
+    }
+  };
+
+  var currentlyResolving = [];
+  var providers = this._providers = Object.create(parent._providers || null);
+  var instances = this._instances = Object.create(null);
+
+  instances.injector = this;
+
+  var error = function(msg) {
+    var stack = currentlyResolving.join(' -&gt; ');
+    currentlyResolving.length = 0;
+    return new Error(stack ? msg + ' (Resolving: ' + stack + ')' : msg);
+  };
+
+  var get = function(name) {
+    if (!providers[name] &amp;&amp; name.indexOf('.') !== -1) {
+      var parts = name.split('.');
+      var pivot = get(parts.shift());
+
+      while(parts.length) {
+        pivot = pivot[parts.shift()];
+      }
+
+      return pivot;
+    }
+
+    if (Object.hasOwnProperty.call(instances, name)) {
+      return instances[name];
+    }
+
+    if (Object.hasOwnProperty.call(providers, name)) {
+      if (currentlyResolving.indexOf(name) !== -1) {
+        currentlyResolving.push(name);
+        throw error('Can not resolve circular dependency!');
+      }
+
+      currentlyResolving.push(name);
+      instances[name] = providers[name][0](providers[name][1]);
+      currentlyResolving.pop();
+
+      return instances[name];
+    }
+
+    return parent.get(name);
+  };
+
+  var instantiate = function(Type) {
+    var instance = Object.create(Type.prototype);
+    var returned = invoke(Type, instance);
+
+    return typeof returned === 'object' ? returned : instance;
+  };
+
+  var invoke = function(fn, context) {
+    if (typeof fn !== 'function') {
+      throw error('Can not invoke "' + fn + '". Expected a function!');
+    }
+
+    var inject = fn.$inject &amp;&amp; fn.$inject || autoAnnotate(fn);
+    var dependencies = inject.map(function(dep) {
+      return get(dep);
+    });
+
+    // TODO(vojta): optimize without apply
+    return fn.apply(context, dependencies);
+  };
+
+  var createChild = function(modules, providersFromParent) {
+    if (providersFromParent &amp;&amp; providersFromParent.length) {
+      var fromParentModule = Object.create(null);
+
+      providersFromParent.forEach(function(name) {
+        if (!providers[name]) {
+          throw new Error('No provider for "' + name + '". Can not use provider from the parent!');
+        }
+
+        fromParentModule[name] = [providers[name][2], providers[name][1]];
+      });
+
+      modules.unshift(fromParentModule);
+    }
+
+    return new Injector(modules, this);
+  };
+
+  var factoryMap = {
+    factory: invoke,
+    type: instantiate,
+    value: function(value) {
+      return value;
+    }
+  };
+
+  modules.forEach(function(module) {
+    // TODO(vojta): handle wrong inputs (modules)
+    if (module instanceof Module) {
+      module.forEach(function(provider) {
+        var name = provider[0];
+        var type = provider[1];
+        var value = provider[2];
+
+        providers[name] = [factoryMap[type], value, type];
+      });
+    } else if (typeof module === 'object') {
+      Object.keys(module).forEach(function(name) {
+        var type = module[name][0];
+        var value = module[name][1];
+
+        providers[name] = [factoryMap[type], value, type];
+      });
+    }
+  });
+
+  // public API
+  this.get = get;
+  this.invoke = invoke;
+  this.instantiate = instantiate;
+  this.createChild = createChild;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.di.Module" id="apidoc.element.di.Module">
+        function <span class="apidocSignatureSpan">di.</span>Module
+        <span class="apidocSignatureSpan">()</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">Module = function () {
+  var providers = [];
+
+  this.factory = function(name, factory) {
+    providers.push([name, 'factory', factory]);
+    return this;
+  };
+
+  this.value = function(name, value) {
+    providers.push([name, 'value', value]);
+    return this;
+  };
+
+  this.type = function(name, type) {
+    providers.push([name, 'type', type]);
+    return this;
+  };
+
+  this.forEach = function(iterator) {
+    providers.forEach(iterator);
+  };
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.di.annotate" id="apidoc.element.di.annotate">
+        function <span class="apidocSignatureSpan">di.</span>annotate
+        <span class="apidocSignatureSpan">()</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">annotate = function () {
+  var args = Array.prototype.slice.call(arguments);
+  var fn = args.pop();
+
+  fn.$inject = args;
+
+  return fn;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+
+</div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.di.annotation" id="apidoc.module.di.annotation">module di.annotation</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.di.annotation.annotate" id="apidoc.element.di.annotation.annotate">
+        function <span class="apidocSignatureSpan">di.annotation.</span>annotate
+        <span class="apidocSignatureSpan">()</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">annotate = function () {
+  var args = Array.prototype.slice.call(arguments);
+  var fn = args.pop();
+
+  fn.$inject = args;
+
+  return fn;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.di.annotation.parse" id="apidoc.element.di.annotation.parse">
+        function <span class="apidocSignatureSpan">di.annotation.</span>parse
+        <span class="apidocSignatureSpan">(fn)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">parse = function (fn) {
+  if (typeof fn !== 'function') {
+    throw new Error('Can not annotate "' + fn + '". Expected a function!');
+  }
+
+  var match = fn.toString().match(FN_ARGS);
+  return match[1] &amp;&amp; match[1].split(',').map(function(arg) {
+    match = arg.match(FN_ARG);
+    return match ? match[1].trim() : arg.trim();
+  }) || [];
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+</div>
+
+<div class="apidocFooterDiv">
+    [ this document was created with
+    <a href="https://github.com/kaizhu256/node-utility2" target="_blank">utility2</a>
+    ]
+</div>
+</div>
+</body></html>
